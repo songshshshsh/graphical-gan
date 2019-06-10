@@ -53,13 +53,13 @@ OUTPUT_DIM = np.prod(OUTPUT_SHAPE) # data dim
 # optimization
 LAMBDA = 0.1 # reconstruction
 LR = 1e-4 # learning rate
-BATCH_SIZE = 50 # batch size
+BATCH_SIZE = 100 # batch size
 BETA1 = .5 # adam
 BETA2 = .999 # adam
 ITERS = 40000 # number of iterations to train
 CRITIC_ITERS = 1
 # visualization
-N_VIS = BATCH_SIZE
+N_VIS = 100
 TINY = 1e-6
 
 
@@ -568,7 +568,7 @@ p_z_l = DynamicGenerator(p_z_l_0)
 
 ###### by fanbao
 p_c_g_prior = np.ones(shape=[BATCH_SIZE, DIM_LATENT_C], dtype=np.float32) / DIM_LATENT_C
-p_c2_g_prior_sampler = tf.distributions.Uniform(low=-1.0, hight=1.0)
+p_c2_g_prior_sampler = tf.distributions.Uniform(low=-1.0, high=1.0)
 p_c_g_prior_sampler = tf.distributions.Categorical(probs=p_c_g_prior)
 p_c_g = tf.squeeze(tf.one_hot(p_c_g_prior_sampler.sample(1), depth=DIM_LATENT_C), axis=0)
 p_c2_g = tf.reshape(p_c2_g_prior_sampler.sample(BATCH_SIZE), (BATCH_SIZE, 1))
@@ -662,8 +662,9 @@ pre_fixed_noise = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_L)).astyp
 ###### by fanbao
 fixed_labels = (list(range(DIM_LATENT_C)) * 100)[:N_VIS]
 fixed_noise_c = tf.constant(make_one_hot(fixed_labels, DIM_LATENT_C), dtype=tf.float32)
+fixed_noise_c2 = tf.constant(np.tile(np.arange(-0.9,1.0,0.2).reshape(10, 1), (1,10)), dtype=tf.float32)
 fixed_noise_h = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_H)).astype('float32'))
-fixed_noise_g = tf.concat([fixed_noise_h, fixed_noise_c], axis=1)
+fixed_noise_g = tf.concat([fixed_noise_h, fixed_noise_c, fixed_noise_c2], axis=1)
 ##################
 # fixed_noise_g = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_G)).astype('float32'))
 fixed_noise_l = DynamicGenerator(pre_fixed_noise)

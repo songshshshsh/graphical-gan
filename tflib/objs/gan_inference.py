@@ -305,7 +305,7 @@ def local_ep_dynamic(disc_fake_zz, disc_real_zz, disc_fake_xz, disc_real_xz, gen
 
 
 ######### by fanbao
-def weighted_local_epce(disc_fake_list, disc_real_list, q_c_g_dist, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None):
+def weighted_local_epce(disc_fake_list, disc_real_list, q_c_g_dist, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None, mutual_loss=None):
 # def weighted_local_epce(disc_fake_list, disc_real_list, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None):
     gen_cost = 0
     disc_cost = 0
@@ -355,6 +355,9 @@ def weighted_local_epce(disc_fake_list, disc_real_list, q_c_g_dist, ratio_list, 
 
     if rec_penalty is not None:
         gen_cost += rec_penalty
+    
+    if mutual_loss is not None:
+        gen_cost += mutual_loss
 
     gen_train_op = tf.train.AdamOptimizer(
         learning_rate=lr, 

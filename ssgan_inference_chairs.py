@@ -574,6 +574,12 @@ p_z_g = tf.concat([p_h_g, p_c_g], axis=1)
 # p_z_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_G])
 fake_x = Generator(p_z_g, p_z_l)
 
+_, q_c_g_logits_mutual = G_Extractor(fake_x)
+mutual_info_loss_c = tf.nn.softmax_cross_entropy_with_logits(
+    logits=q_c_g_logits_mutual,
+    labels=p_c_g
+)
+
 if MODE in ['local_ep', 'local_epce-z']:
     disc_fake, disc_real = [],[]
     # p ~ generative model
@@ -609,7 +615,7 @@ disc_params = lib.params_with_name('Discriminator')
 
 if MODE == 'local_ep':
     rec_penalty = None
-    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, q_c_g_dist, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty)
+    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, q_c_g_dist, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty, mutual_loss=mutual_info_loss_c)
 
 elif MODE == 'local_epce-z':
     rec_penalty = LAMBDA*lib.utils.distance.distance(real_x, rec_x, 'l2')

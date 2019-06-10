@@ -304,8 +304,9 @@ def local_ep_dynamic(disc_fake_zz, disc_real_zz, disc_fake_xz, disc_real_xz, gen
     return gen_cost, disc_cost, gen_train_op, disc_train_op
 
 
-def weighted_local_epce(disc_fake_list, disc_real_list, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None):
-    # by fanbao: new parameter: q_c_g_dist
+######### by fanbao
+def weighted_local_epce(disc_fake_list, disc_real_list, q_c_g_dist, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None):
+# def weighted_local_epce(disc_fake_list, disc_real_list, ratio_list, gen_params, disc_params, lr=2e-4, beta1=0.5, rec_penalty = None):
     gen_cost = 0
     disc_cost = 0
     assert len(disc_fake_list) == ratio_list.shape[0]
@@ -315,17 +316,18 @@ def weighted_local_epce(disc_fake_list, disc_real_list, ratio_list, gen_params, 
             logits=disc_fake, 
             labels=tf.ones_like(disc_fake)
         ))  # -log(sigmoid(disc_fake))
-        # if disc_real is list:
-        #   for idx, item in enumerate(disc_real):
-        #       gen_cost += ratio * q_c_g_dist[:, idx] * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-        #             logits=item,
-        #             labels=tf.zeros_like(disc_real)
-        #         ))
-        # else:
-        gen_cost += ratio * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=disc_real, 
-            labels=tf.zeros_like(disc_real)
-        ))  # -log(1-sigmoid(disc_real))
+        # by fanbao
+        if isinstance(disc_real, list):
+            for idx, item in enumerate(disc_real):
+                gen_cost += ratio * q_c_g_dist[:, idx] * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=item,
+                    labels=tf.zeros_like(disc_real)
+                ))  # -log(1-sigmoid(disc_real))
+        else:
+            gen_cost += ratio * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=disc_real,
+                labels=tf.zeros_like(disc_real)
+            ))  # -log(1-sigmoid(disc_real))
         gen_debug_list.append(ratio * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=disc_fake, 
             labels=tf.ones_like(disc_fake)))+ 

@@ -36,7 +36,12 @@ BN_FLAG_E = BN_FLAG # batch norm in E
 BN_FLAG_D = BN_FLAG # batch norm in E
 BN_FLAG_OP = False # batch norm in operator
 # model size
-DIM_LATENT_G = 128 # global latent variable
+# by fanbao
+DIM_LATENT_C = 10 # global category latent variable
+DIM_LATENT_H = 128 # global original latent variable
+# DIM_LATENT_G = 128
+DIM_LATENT_G = DIM_LATENT_C + DIM_LATENT_H # global latent variable
+######################
 DIM_LATENT_L = 8 # local latent variable
 DIM_LATENT_T = DIM_LATENT_L # transformation latent variable
 DIM = 32 # model size of frame generator
@@ -229,35 +234,53 @@ def Extractor(inputs):
 
     return tf.reshape(output, [BATCH_SIZE, LEN, DIM_LATENT_L])
 
+# by fanbao:
 def G_Extractor(inputs):
+# def G_Extractor(inputs):
     output = tf.reshape(inputs, [BATCH_SIZE, 3*LEN, 64, 64])
 
+    # by fanbao:
     output = lib.ops.conv2d.Conv2D('Extractor.G.1', 3*LEN, DIM, 5, output, stride=2)
+    # output = lib.ops.conv2d.Conv2D('Extractor.G.1', 3*LEN, DIM, 5, output, stride=2)
     output = LeakyReLU(output)
 
+    # by fanbao:
     output = lib.ops.conv2d.Conv2D('Extractor.G.2', DIM, 2*DIM, 5, output, stride=2)
+    # output = lib.ops.conv2d.Conv2D('Extractor.G.2', DIM, 2*DIM, 5, output, stride=2)
     if BN_FLAG_E:
-        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN2', [0,2,3], output)
+        # by fanbao:
+        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN2', [0, 2, 3], output)
+        # output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN2', [0,2,3], output)
     output = LeakyReLU(output)
 
+    # by fanbao:
     output = lib.ops.conv2d.Conv2D('Extractor.G.3', 2*DIM, 4*DIM, 5, output, stride=2)
+    # output = lib.ops.conv2d.Conv2D('Extractor.G.3', 2*DIM, 4*DIM, 5, output, stride=2)
     if BN_FLAG_E:
-        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN3', [0,2,3], output)
+        # by fanbao:
+        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN3', [0, 2, 3], output)
+        # output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN3', [0,2,3], output)
     output = LeakyReLU(output)
 
+    # by fanbao:
     output = lib.ops.conv2d.Conv2D('Extractor.G.4', 4*DIM, 8*DIM, 5, output, stride=2)
+    # output = lib.ops.conv2d.Conv2D('Extractor.G.4', 4*DIM, 8*DIM, 5, output, stride=2)
     if BN_FLAG_E:
-        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN4', [0,2,3], output)
+        # by fanbao:
+        output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN4', [0, 2, 3], output)
+        # output = lib.ops.batchnorm.Batchnorm('Extractor.G.BN4', [0,2,3], output)
     output = LeakyReLU(output)
 
     output = tf.reshape(output, [BATCH_SIZE, 4*4*8*DIM])
     # by fanbao:
-    # output = lib.ops.linear.Linear('Extractor.G.Output', 4*4*8*DIM, DIM_LATENT_H, output)
-    output = lib.ops.linear.Linear('Extractor.G.Output', 4*4*8*DIM, DIM_LATENT_G, output)
+    h_output = lib.ops.linear.Linear('Extractor.H.Output', 4*4*8*DIM, DIM_LATENT_H, output)
+    c_output = lib.ops.linear.Linear('Extractor.C.Output', 4*4*8*DIM, DIM_LATENT_C, output)
+    # output = lib.ops.linear.Linear('Extractor.G.Output', 4*4*8*DIM, DIM_LATENT_G, output)
 
     # by fanbao:
-    # tf.reshape(output, [BATCH_SIZE, DIM_LATENT_H])
-    return tf.reshape(output, [BATCH_SIZE, DIM_LATENT_G])
+    return tf.reshape(h_output, [BATCH_SIZE, DIM_LATENT_H]), tf.reshape(c_output, [BATCH_SIZE, DIM_LATENT_C])
+    # return tf.reshape(output, [BATCH_SIZE, DIM_LATENT_G])
+
 
 if MODE in ['local_ep', 'local_epce-z']:
     def Discriminator(x, z_g, z_l):
@@ -511,33 +534,44 @@ losses
 real_x_unit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, LEN, OUTPUT_DIM])
 real_x = 2*((tf.cast(real_x_unit, tf.float32)/256.)-.5)
 q_z_l_pre = Extractor(real_x)
-# by fanbao:
-# q_h_g = G_Extractor(real_x)
-# q_c_g_dist = C_Extractor(real_x)
-# q_c_g = sample(q_c_g_dist)
-# q_z_g = concat([q_h_g, q_c_g], dim=1)
-q_z_g = G_Extractor(real_x)  # to remove
+# ######  by fanbao:
+q_h_g, q_c_g_logits = G_Extractor(real_x)
+q_c_g_dist = tf.softmax(q_c_g_logits)
+# q_c_g, q_z_g is for reconstruct
+q_c_g_dist_sampler = tf.distributions.Categorical(probs=q_c_g_logits)
+q_c_g = tf.squeeze(tf.one_hot(q_c_g_dist_sampler.sample(1), depth=DIM_LATENT_C), axis=0)
+q_z_g = tf.concat([q_h_g, q_c_g], axis=1)  # for reconstruct
+#####################################
+# q_z_g = G_Extractor(real_x)
 q_z_l = DynamicExtractor(q_z_l_pre)  # q(v|x)
-rec_x = Generator(q_z_g, q_z_l)
-# q_z_g_all = []
-# for i in range(DIM_LATENT_C):
-#   one_hot_c_g = onehot(i, num_class=DIM_LATENT_C)
-#   q_z_g_all.append(concat([one_hot_c_g, q_z_g]))
-#
+rec_x = Generator(q_z_g, q_z_l) # for reconstruct
 
+###### by fanbao
+def make_one_hot(indices, size):
+    as_one_hot = np.zeros((indices.shape[0], size))
+    as_one_hot[np.arange(0, indices.shape[0]), indices] = 1.0
+    return as_one_hot
+##########
+
+##### by fanbao
+q_z_g_all = []
+for i in range(DIM_LATENT_C):
+    one_hot_c_g = tf.constant(make_one_hot([i] * BATCH_SIZE, DIM_LATENT_C))
+    q_z_g_all.append(tf.concat([q_h_g, one_hot_c_g], axis=1))
+###########
 
 p_z_l_0 = tf.random_normal([BATCH_SIZE, DIM_LATENT_L])
 p_z_l = DynamicGenerator(p_z_l_0)
-# by fanbao: modify p_z_g
-# DIM_LATENT_C = 10
-# DIM_LATENT_H = 128
-# p_c_g = onehot(categorical(num_class=DIM_LATENT_C, batch_size=BATCH_SIZE))
-# p_h_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_H])
-# DIM_LATENT_G = DIM_LATENT_C + DIM_LATENT_H
-# p_z_g = concat([p_c_g, p_z_g], dim=1)
 
+###### by fanbao
+p_c_g_prior = np.ones(shape=[BATCH_SIZE, DIM_LATENT_C], dtype=np.float32) / DIM_LATENT_C
+p_c_g_prior_sampler = tf.distributions.Categorical(probs=p_c_g_prior)
+p_c_g = tf.squeeze(tf.one_hot(p_c_g_prior_sampler.sample(1), depth=DIM_LATENT_C), axis=0)
+p_h_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_H])
+p_z_g = tf.concat([p_h_g, p_c_g], axis=1)
+#############
 
-p_z_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_G])
+# p_z_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_G])
 fake_x = Generator(p_z_g, p_z_l)
 
 if MODE in ['local_ep', 'local_epce-z']:
@@ -550,18 +584,20 @@ if MODE in ['local_ep', 'local_epce-z']:
         disc_real.append(DynamicDiscrminator(q_z_l[:,i,:], q_z_l[:,i+1,:]))
     # z_g ~ h
     disc_fake.append(ZGDiscrminator(p_z_g))
-    # temp = []
-    # for i in range(DIM_LATENT_C):
-    #   temp.append(ZGDiscriminator(q_z_g_all[i]))
-    # disc_real.append(temp)
-    disc_real.append(ZGDiscrminator(q_z_g))
+    ########### by fanbao
+    temp = []
+    for i in range(DIM_LATENT_C):
+        temp.append(ZGDiscrminator(q_z_g_all[i]))
+    disc_real.append(temp)
+    #############
+    # disc_real.append(ZGDiscrminator(q_z_g))
 
     disc_fake.append(Discriminator(fake_x, p_z_g, p_z_l))
-    # temp = []
-    # for i in range(DIM_LATENT_C):
-    #   temp.append(Discriminator(real_x, q_z_g_all[i], q_z_l))
-    # disc_real.append(temp)
-    disc_real.append(Discriminator(real_x, q_z_g, q_z_l))
+    temp = []
+    for i in range(DIM_LATENT_C):
+      temp.append(Discriminator(real_x, q_z_g_all[i], q_z_l))
+    disc_real.append(temp)
+    # disc_real.append(Discriminator(real_x, q_z_g, q_z_l))
 
 elif MODE in ['ali', 'alice-z']:
     disc_real = Discriminator(real_x, q_z_g, q_z_l)
@@ -573,7 +609,7 @@ disc_params = lib.params_with_name('Discriminator')
 
 if MODE == 'local_ep':
     rec_penalty = None
-    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty)
+    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, q_c_g_dist, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty)
 
 elif MODE == 'local_epce-z':
     rec_penalty = LAMBDA*lib.utils.distance.distance(real_x, rec_x, 'l2')

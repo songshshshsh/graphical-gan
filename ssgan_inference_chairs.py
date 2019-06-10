@@ -536,10 +536,10 @@ real_x = 2*((tf.cast(real_x_unit, tf.float32)/256.)-.5)
 q_z_l_pre = Extractor(real_x)
 # ######  by fanbao:
 q_h_g, q_c_g_logits = G_Extractor(real_x)
-q_c_g_dist = tf.softmax(q_c_g_logits)
+q_c_g_dist = tf.nn.softmax(q_c_g_logits)
 # q_c_g, q_z_g is for reconstruct
 q_c_g_dist_sampler = tf.distributions.Categorical(probs=q_c_g_logits)
-q_c_g = tf.squeeze(tf.one_hot(q_c_g_dist_sampler.sample(1), depth=DIM_LATENT_C), axis=0)
+q_c_g = tf.cast(tf.squeeze(tf.one_hot(q_c_g_dist_sampler.sample(1), depth=DIM_LATENT_C), axis=0), tf.float32)
 q_z_g = tf.concat([q_h_g, q_c_g], axis=1)  # for reconstruct
 #####################################
 # q_z_g = G_Extractor(real_x)
@@ -548,15 +548,15 @@ rec_x = Generator(q_z_g, q_z_l) # for reconstruct
 
 ###### by fanbao
 def make_one_hot(indices, size):
-    as_one_hot = np.zeros((indices.shape[0], size))
-    as_one_hot[np.arange(0, indices.shape[0]), indices] = 1.0
+    as_one_hot = np.zeros((len(indices), size))
+    as_one_hot[np.arange(0, len(indices)), indices] = 1.0
     return as_one_hot
 ##########
 
 ##### by fanbao
 q_z_g_all = []
 for i in range(DIM_LATENT_C):
-    one_hot_c_g = tf.constant(make_one_hot([i] * BATCH_SIZE, DIM_LATENT_C))
+    one_hot_c_g = tf.constant(make_one_hot([i] * BATCH_SIZE, DIM_LATENT_C), dtype=tf.float32)
     q_z_g_all.append(tf.concat([q_h_g, one_hot_c_g], axis=1))
 ###########
 

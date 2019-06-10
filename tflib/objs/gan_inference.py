@@ -321,7 +321,7 @@ def weighted_local_epce(disc_fake_list, disc_real_list, q_c_g_dist, ratio_list, 
             for idx, item in enumerate(disc_real):
                 gen_cost += ratio * q_c_g_dist[:, idx] * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                     logits=item,
-                    labels=tf.zeros_like(disc_real)
+                    labels=tf.zeros_like(item)
                 ))  # -log(1-sigmoid(disc_real))
         else:
             gen_cost += ratio * tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(

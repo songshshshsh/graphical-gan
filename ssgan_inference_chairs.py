@@ -586,7 +586,7 @@ mutual_info_loss_c = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
 ))
 epsilon = (p_c2_g - q_c2_mean_mutual)
 mutual_info_loss_c2 = tf.reduce_mean(
-    - 0.5 * tf.square(epsilon)
+    0.5 * tf.square(epsilon)
 )
 
 mutual_loss = mutual_info_loss_c + mutual_info_loss_c2

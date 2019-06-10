@@ -40,7 +40,7 @@ BN_FLAG_OP = False # batch norm in operator
 DIM_LATENT_C = 10 # global category latent variable
 DIM_LATENT_H = 128 # global original latent variable
 # DIM_LATENT_G = 128
-DIM_LATENT_G = DIM_LATENT_C + DIM_LATENT_H # global latent variable
+DIM_LATENT_G = DIM_LATENT_C + DIM_LATENT_H + 1# global latent variable
 ######################
 DIM_LATENT_L = 8 # local latent variable
 DIM_LATENT_T = DIM_LATENT_L # transformation latent variable
@@ -60,6 +60,7 @@ ITERS = 40000 # number of iterations to train
 CRITIC_ITERS = 1
 # visualization
 N_VIS = BATCH_SIZE
+TINY = 1e-6
 
 
 '''
@@ -275,10 +276,11 @@ def G_Extractor(inputs):
     # by fanbao:
     h_output = lib.ops.linear.Linear('Extractor.H.Output', 4*4*8*DIM, DIM_LATENT_H, output)
     c_output = lib.ops.linear.Linear('Extractor.C.Output', 4*4*8*DIM, DIM_LATENT_C, output)
+    c2_mean = lib.ops.linear.Linear('Extractor.C2.Output', 4*4*8*DIM, 1, output)
     # output = lib.ops.linear.Linear('Extractor.G.Output', 4*4*8*DIM, DIM_LATENT_G, output)
 
     # by fanbao:
-    return tf.reshape(h_output, [BATCH_SIZE, DIM_LATENT_H]), tf.reshape(c_output, [BATCH_SIZE, DIM_LATENT_C])
+    return tf.reshape(h_output, [BATCH_SIZE, DIM_LATENT_H]), tf.reshape(c_output, [BATCH_SIZE, DIM_LATENT_C]), tf.reshape(c2_mean, [BATCH_SIZE, 1])
     # return tf.reshape(output, [BATCH_SIZE, DIM_LATENT_G])
 
 
@@ -535,12 +537,13 @@ real_x_unit = tf.placeholder(tf.float32, shape=[BATCH_SIZE, LEN, OUTPUT_DIM])
 real_x = 2*((tf.cast(real_x_unit, tf.float32)/256.)-.5)
 q_z_l_pre = Extractor(real_x)
 # ######  by fanbao:
-q_h_g, q_c_g_logits = G_Extractor(real_x)
+q_h_g, q_c_g_logits, q_c2_g_mean = G_Extractor(real_x)
 q_c_g_dist = tf.nn.softmax(q_c_g_logits)
+q_c2_g = tf.random_normal([BATCH_SIZE, 1]) + q_c2_g_mean
 # q_c_g, q_z_g is for reconstruct
 q_c_g_dist_sampler = tf.distributions.Categorical(probs=q_c_g_logits)
 q_c_g = tf.cast(tf.squeeze(tf.one_hot(q_c_g_dist_sampler.sample(1), depth=DIM_LATENT_C), axis=0), tf.float32)
-q_z_g = tf.concat([q_h_g, q_c_g], axis=1)  # for reconstruct
+q_z_g = tf.concat([q_h_g, q_c_g, q_c2_g], axis=1)  # for reconstruct
 #####################################
 # q_z_g = G_Extractor(real_x)
 q_z_l = DynamicExtractor(q_z_l_pre)  # q(v|x)
@@ -557,7 +560,7 @@ def make_one_hot(indices, size):
 q_z_g_all = []
 for i in range(DIM_LATENT_C):
     one_hot_c_g = tf.constant(make_one_hot([i] * BATCH_SIZE, DIM_LATENT_C), dtype=tf.float32)
-    q_z_g_all.append(tf.concat([q_h_g, one_hot_c_g], axis=1))
+    q_z_g_all.append(tf.concat([q_h_g, one_hot_c_g, q_c2_g], axis=1))
 ###########
 
 p_z_l_0 = tf.random_normal([BATCH_SIZE, DIM_LATENT_L])
@@ -565,20 +568,28 @@ p_z_l = DynamicGenerator(p_z_l_0)
 
 ###### by fanbao
 p_c_g_prior = np.ones(shape=[BATCH_SIZE, DIM_LATENT_C], dtype=np.float32) / DIM_LATENT_C
+p_c2_g_prior_sampler = tf.distributions.Uniform(low=-1.0, hight=1.0)
 p_c_g_prior_sampler = tf.distributions.Categorical(probs=p_c_g_prior)
 p_c_g = tf.squeeze(tf.one_hot(p_c_g_prior_sampler.sample(1), depth=DIM_LATENT_C), axis=0)
+p_c2_g = tf.reshape(p_c2_g_prior_sampler.sample(BATCH_SIZE), (BATCH_SIZE, 1))
 p_h_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_H])
-p_z_g = tf.concat([p_h_g, p_c_g], axis=1)
+p_z_g = tf.concat([p_h_g, p_c_g, p_c2_g], axis=1)
 #############
 
 # p_z_g = tf.random_normal([BATCH_SIZE, DIM_LATENT_G])
 fake_x = Generator(p_z_g, p_z_l)
 
-_, q_c_g_logits_mutual = G_Extractor(fake_x)
-mutual_info_loss_c = tf.nn.softmax_cross_entropy_with_logits(
+_, q_c_g_logits_mutual, q_c2_mean_mutual = G_Extractor(fake_x)
+mutual_info_loss_c = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
     logits=q_c_g_logits_mutual,
     labels=p_c_g
+))
+epsilon = (p_c2_g - q_c2_mean_mutual)
+mutual_info_loss_c2 = tf.reduce_mean(
+    - 0.5 * tf.square(epsilon)
 )
+
+mutual_loss = mutual_info_loss_c + mutual_info_loss_c2
 
 if MODE in ['local_ep', 'local_epce-z']:
     disc_fake, disc_real = [],[]
@@ -615,7 +626,7 @@ disc_params = lib.params_with_name('Discriminator')
 
 if MODE == 'local_ep':
     rec_penalty = None
-    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, q_c_g_dist, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty, mutual_loss=mutual_info_loss_c)
+    gen_cost, disc_cost, _, _, gen_train_op, disc_train_op = lib.objs.gan_inference.weighted_local_epce(disc_fake, disc_real, q_c_g_dist, ratio, gen_params+ext_params, disc_params, lr=LR, beta1=BETA1, rec_penalty=rec_penalty, mutual_loss=mutual_loss)
 
 elif MODE == 'local_epce-z':
     rec_penalty = LAMBDA*lib.utils.distance.distance(real_x, rec_x, 'l2')

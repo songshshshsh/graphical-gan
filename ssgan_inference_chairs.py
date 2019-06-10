@@ -642,7 +642,13 @@ def vis(x, iteration, num, name):
 
 # For generation
 pre_fixed_noise = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_L)).astype('float32'))
-fixed_noise_g = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_G)).astype('float32'))
+###### by fanbao
+fixed_labels = (list(range(DIM_LATENT_C)) * 100)[:N_VIS]
+fixed_noise_c = tf.constant(make_one_hot(fixed_labels, DIM_LATENT_C), dtype=tf.float32)
+fixed_noise_h = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_H)).astype('float32'))
+fixed_noise_g = tf.concat([fixed_noise_h, fixed_noise_c], axis=1)
+##################
+# fixed_noise_g = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_G)).astype('float32'))
 fixed_noise_l = DynamicGenerator(pre_fixed_noise)
 fixed_noise_samples = Generator(fixed_noise_g, fixed_noise_l)
 def generate_video(iteration, data):
@@ -666,7 +672,10 @@ def reconstruct_video(iteration):
 
 # disentangle
 fixed_data = dev_gen().next()
-dis_g = tf.constant(np.tile(np.random.normal(size=(1, DIM_LATENT_G)).astype('float32'), [BATCH_SIZE, 1]))
+# by fanbao
+dis_g = fixed_noise_g
+##################
+# dis_g = tf.constant(np.tile(np.random.normal(size=(1, DIM_LATENT_G)).astype('float32'), [BATCH_SIZE, 1]))
 dis_x = Generator(dis_g, q_z_l)
 def disentangle(iteration):
     samples = session.run(dis_x, feed_dict={real_x_unit: fixed_data})

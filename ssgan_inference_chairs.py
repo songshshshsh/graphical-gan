@@ -53,13 +53,13 @@ OUTPUT_DIM = np.prod(OUTPUT_SHAPE) # data dim
 # optimization
 LAMBDA = 0.1 # reconstruction
 LR = 1e-4 # learning rate
-BATCH_SIZE = 100 # batch size
+BATCH_SIZE = 50 # batch size
 BETA1 = .5 # adam
 BETA2 = .999 # adam
 ITERS = 40000 # number of iterations to train
 CRITIC_ITERS = 1
 # visualization
-N_VIS = 100
+N_VIS = BATCH_SIZE
 TINY = 1e-6
 
 
@@ -662,7 +662,7 @@ pre_fixed_noise = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_L)).astyp
 ###### by fanbao
 fixed_labels = (list(range(DIM_LATENT_C)) * 100)[:N_VIS]
 fixed_noise_c = tf.constant(make_one_hot(fixed_labels, DIM_LATENT_C), dtype=tf.float32)
-fixed_noise_c2 = tf.constant(np.tile(np.arange(-0.9,1.0,0.2).reshape(10, 1), (1,10)), dtype=tf.float32)
+fixed_noise_c2 = tf.constant(np.tile(np.arange(-0.9,1.0,0.4).reshape(5, 1), (1,10)).reshape(N_VIS, 1), dtype=tf.float32)
 fixed_noise_h = tf.constant(np.random.normal(size=(N_VIS, DIM_LATENT_H)).astype('float32'))
 fixed_noise_g = tf.concat([fixed_noise_h, fixed_noise_c, fixed_noise_c2], axis=1)
 ##################
@@ -758,7 +758,7 @@ with tf.Session() as session:
         lib.plot.tick()
 
         # Generation and reconstruction
-        if iteration % 5000 == 4999:
+        if iteration % 5000 == 9:
             generate_video(iteration, _data)
             reconstruct_video(iteration)
             disentangle(iteration)
